@@ -1,0 +1,114 @@
+--导入测试数据库
+--connect sys/password as sysdba
+--当首次导入时创建表空间 （运行脚本时会提示输入 &1 输入数据文件希望存放的物理地址 例如 D:\OracleData）
+create tablespace apps datafile '&1\apps.dbf' size 100m autoextend on next 10m;
+create tablespace appsys datafile '&1\appsys.dbf' size 100m autoextend on next 10m; --系统管理的表
+create tablespace hr datafile '&1\hr.dbf' size 100m autoextend on next 10m; 
+create tablespace appview datafile '&1\appview.dbf' size 100m autoextend on next 10m;  --系统管理的表
+create tablespace workflow datafile '&1\workflow.dbf' size 100m autoextend on next 10m; --工作流的表
+create tablespace oa datafile '&1\oa.dbf' size 1m autoextend on next 1m;
+
+create tablespace dtsppr datafile '&1\dtsppr.dbf' size 100m autoextend on next 10m; 
+
+
+
+--删除已有用户，首先运行 select * from v$database; 查看数据库信息
+--在运行脚本时会提示 输入 sid,请输入select * from v$database查询的name字段值
+set serveroutput on size 1000000;
+declare
+v_sid varchar2(1000);
+cursor cur_user is select username from all_users where lower(username) in
+('apps','appsys','hr','appview','workflow','bbp', 'oa', 'dtsppr', 'km', 'srm')
+order by decode( lower(username),'apps',chr(1), lower(username));
+begin
+select name into v_sid from v$database;
+if upper(v_sid) = upper('&sid') then
+  for rec_user in cur_user loop
+    dbms_output.put_line('***********************************');
+    dbms_output.put_line('开始删除用户'||rec_user.username);
+    execute immediate ('drop user '||rec_user.username||' cascade');
+    dbms_output.put_line('成功删除用户'||rec_user.username);
+    dbms_output.put_line('***********************************');
+    dbms_output.put_line('');
+  end loop;
+else
+  dbms_output.put_line('请输入正确的SID!');
+end if;
+end;
+/
+
+
+
+-- 删除表空间的语句，执行之后，数据库文件还在，但在改表空间下建用户的时候提示表空间不存在。
+drop tablespace apps INCLUDING CONTENTS;
+drop tablespace appsys INCLUDING CONTENTS;
+drop tablespace hr INCLUDING CONTENTS;
+drop tablespace appview INCLUDING CONTENTS;
+drop tablespace workflow INCLUDING CONTENTS;
+drop tablespace oa INCLUDING CONTENTS;
+
+drop tablespace dtsppr INCLUDING CONTENTS;
+
+
+
+
+--创建用户
+create user apps identified by cape default tablespace apps;
+create user appsys identified by cape default tablespace appsys;
+create user hr identified by cape default tablespace hr;
+create user appview identified by cape default tablespace appview;
+create user workflow identified by cape default tablespace workflow;
+create user oa identified by cape default tablespace oa;
+
+create user dtsppr identified by cape default tablespace dtsppr;
+
+--赋权限
+grant dba to apps;
+grant dba to appsys;
+grant dba to hr;
+grant dba to appview;
+grant dba to workflow;
+grant dba to oa;
+
+grant dba to dtsppr;
+
+
+grant all on dual to appsys with grant option;
+grant all on dual to apps with grant option;
+grant all on dual to hr with grant option;
+grant all on dual to appview with grant option;
+grant all on dual to workflow with grant option;
+grant all on dual to oa with grant option;
+
+grant all on dual to dtsppr with grant option;
+
+
+/******************************************************
+--connect appview
+******************************************************/
+grant create any table to apps;
+grant alter any table to apps;
+grant drop any table to apps;
+
+grant create any index to apps;
+grant drop any index to apps;
+
+
+-- 使用exp导入导出数据库文件 使用次种导入导出可以在本地使用IP导出远程的数据库文件。
+exp apps/cape@10.216.60.50/dtsppr file=e:\dtsppr20140715.dmp log=e:\dtsppr20140715.log owner=(appsys,apps,hr,appview,workflow,oa,dtsppr)
+imp apps/cape@dtsppr file=e:\dtsppr20140715.dmp log=e:\imp_dtsppr20140715.log  fromuser=appsys touser=appsys fromuser=apps touser=apps fromuser=hr touser=hr fromuser=appview touser=appview fromuser=workflow touser=workflow fromuser=oa touser=oa fromuser=dtsppr touser=dtsppr
+
+--使用数据泵导入导出数据  *.expdb文件件需要放到admin\**\dpdump\文件夹下面。
+expdp apps/cape@10.216.60.50/dtsppr dumpfile=dtsppr20140715.EXPDB  logfile=expdp_dtsppr20140715.log schemas=(appsys,apps,hr,appview,workflow,oa,dtsppr)
+impdp apps/cape@dtsppr dumpfile=dtsppr20140715.EXPDB logfile=impdp_dtsppr20140715.log schemas=(appsys,apps,hr,appview,workflow,oa,dtsppr)
+
+
+在数据导入完成后，使用每个用户，将该用户下的对象全部编译。
+
+
+exp easysite/easysite@10.50.20.50/orcl file=e:\easysite20151229.dmp log=e:\easysite20151229.log owner=(easysite)
+
+
+exp easysite/easysite@10.50.20.50/orcl file=e:\easysite2015122910.dmp log=e:\easysite2015122910.log owner=(easysite)
+
+imp easysite/easysite@orcl file=e:\easysite20151229.dmp log=e:\imp_easysite20151229.log  fromuser=easysite touser=easysite
